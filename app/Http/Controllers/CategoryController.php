@@ -4,10 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\Category;
 use Illuminate\Http\Request;
+use \Illuminate\Http\JsonResponse;
 
 class CategoryController extends Controller
 {
-    public function index()
+    public function index(): JsonResponse
     {
         // Obtener todas las categorías
         $categories = Category::all();
@@ -15,7 +16,7 @@ class CategoryController extends Controller
         return response()->json($categories);
     }
 
-    public function show($id)
+    public function show($id): JsonResponse
     {
         // Obtener una categoría por su ID
         $category = Category::find($id);
@@ -27,51 +28,87 @@ class CategoryController extends Controller
         return response()->json($category);
     }
 
-    public function store(Request $request)
+    public function store(Request $request): JsonResponse
     {
-        // Validar los datos de entrada
         $request->validate([
-            'name' => 'required',
+            'name' => 'required|string|unique:categories,name',
+            'image' => 'required|image|mimes:jpeg,png,jpg,svg,webp|max:6048',
         ]);
 
-        // Crear una nueva categoría
-        $category = Category::create($request->all());
+        $image = $request->file('image');
+        $imageName = time().'.'.$image->extension();
+        $image->move(public_path('images'), $imageName);
 
-        return response()->json($category, 201);
+        $category = new Category();
+        $category->name = $request->name;
+        $category->image = $imageName;
+        $category->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Category created successfully',
+            'data' => [
+                'category' => $category,
+                'image_url' => asset('images/' . $imageName),
+            ]
+        ], 201);
     }
 
-    public function update(Request $request, $id)
+    public function update(Request $request, $id): JsonResponse
     {
-        // Obtener la categoría por su ID
-        $category = Category::find($id);
-
-        if (!$category) {
-            return response()->json(['error' => 'Categoría no encontrada'], 404);
-        }
-
-        // Validar los datos de entrada
         $request->validate([
-            'name' => 'required',
+            'name' => 'required|string|unique:categories,name,'.$id,
+            'image' => 'required|image|mimes:jpeg,png,jpg,svg,webp|max:6048',
         ]);
 
-        // Actualizar la categoría
-        $category->update($request->all());
-
-        return response()->json($category);
-    }
-
-    public function destroy($id)
-    {
-        // Obtener la categoría por su ID
         $category = Category::find($id);
 
-        if (!$category) {
-            return response()->json(['error' => 'Categoría no encontrada'], 404);
+        if ($request->hasFile('image')) {
+            $image = $request->file('image');
+            $imageName = time().'.'.$image->extension();
+            $image->move(public_path('images'), $imageName);
+
+            if ($category->image) {
+                $oldImagePath = public_path('images/' . $category->image);
+
+                if (file_exists($oldImagePath)) {
+                    unlink($oldImagePath);
+                }
+            }
+
+            $category->image = $imageName;
         }
 
-        // Eliminar la categoría
+        $category->name = $request->name;
+        $category->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Category updated successfully',
+            'data' => [
+                'category' => $category,
+                'image_url' => $category->image ? asset('images/' . $category->image) : null,
+            ]
+        ], 200);
+    }
+
+    public function destroy($id): JsonResponse
+    {
+        $category = Category::findOrFail($id);
+
+        if ($category->image) {
+            $imagePath = public_path('images/' . $category->image);
+
+            if (file_exists($imagePath)) {
+                unlink($imagePath);
+            }
+        }
+
         $category->delete();
 
-        return response()->json(['message' => 'Categoría eliminada']);
+        return response()->json([
+            'success' => true,
+            'message' => 'Category deleted successfully'
+        ], 200);
     }
 }
